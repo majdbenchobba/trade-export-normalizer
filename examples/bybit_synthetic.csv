@@ -1,0 +1,3 @@
+Symbol,Side,Order Time,Avg Price,Closed Size,Fee,Closed PnL
+ETHUSDT,Buy,2026-01-01 10:00:00,3000,0.1,0.10,
+ETHUSDT,Sell,2026-01-01 11:00:00,3100,0.1,0.10,10.00
