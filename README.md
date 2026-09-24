@@ -61,5 +61,10 @@ The normalized CSV uses:
 - unknown symbols stay in the export, but chart fields may be empty
 - this tool only works with local CSV files
 - never commit real broker exports; they can contain financial and account data
-- Bybit normalization currently models straightforward open-then-close sequences,
-  not every partial-fill, scale-in, scale-out, or position-reversal case
+- Bybit normalization accepts complete round trips: one opening fill followed
+  by one opposite fill of the same quantity, independently for each symbol.
+- Partial closes, scale-ins, position reversals, and an unclosed position at
+  the end of the export produce an error. The CLI leaves an existing output
+  file unchanged when the input is rejected.
+- Fees for a supported Bybit round trip include both its opening and closing
+  fill. The input must use one consistent fee currency.
