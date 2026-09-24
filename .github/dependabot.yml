@@ -8,6 +8,7 @@ updates:
     open-pull-requests-limit: 3
     groups:
       dependency-updates:
+        update-types: ["minor", "patch"]
         patterns:
           - "*"
   - package-ecosystem: "github-actions"
@@ -18,5 +19,6 @@ updates:
     open-pull-requests-limit: 3
     groups:
       dependency-updates:
+        update-types: ["minor", "patch"]
         patterns:
           - "*"
