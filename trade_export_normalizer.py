@@ -1,5 +1,6 @@
 import argparse
 import json
+import math
 import re
 from pathlib import Path
 
@@ -194,28 +195,46 @@ def normalize_bybit_export(path: Path) -> pd.DataFrame:
     trades = []
 
     for symbol in df[symbol_col].dropna().unique():
-        df_symbol = df[df[symbol_col] == symbol].sort_values(order_time_col)
+        df_symbol = df[df[symbol_col] == symbol].sort_values(order_time_col, kind="stable")
 
         position = 0.0
         entry_price = None
         entry_time = None
+        entry_fee = 0.0
 
-        for _, row in df_symbol.iterrows():
+        for index, row in df_symbol.iterrows():
             side = row["side_mapped"]
             qty = float(row[filled_qty_col])
             price = float(row[filled_price_col])
             time = row[order_time_col]
 
-            if side is None or pd.isna(time) or qty <= 0 or price <= 0:
+            if (
+                side not in ("LONG", "SHORT")
+                or pd.isna(time)
+                or not math.isfinite(qty)
+                or not math.isfinite(price)
+                or qty <= 0
+                or price <= 0
+            ):
+                raise ValueError(
+                    f"{path.name}, row {index + 2}: invalid filled order for {symbol}."
+                )
+
+            if position == 0:
+                entry_time = time
+                entry_price = price
+                entry_fee = float(row["normalized_fee"])
+                position = qty if side == "LONG" else -qty
                 continue
 
-            same_direction = (side == "LONG" and position >= 0) or (side == "SHORT" and position <= 0)
-            if same_direction:
-                if position == 0:
-                    entry_time = time
-                    entry_price = price
-                position += qty if side == "LONG" else -qty
-                continue
+            same_direction = (side == "LONG") == (position > 0)
+            if same_direction or qty != abs(position):
+                sequence = "scale-in" if same_direction else "partial close or position reversal"
+                raise ValueError(
+                    f"{path.name}, row {index + 2}: unsupported {sequence} for {symbol}. "
+                    "Bybit normalization requires one opening fill followed by one "
+                    "opposite fill of the same quantity. Use complete, unscaled round trips."
+                )
 
             chart_exchange, chart_symbol = map_chart_symbol(symbol)
             trades.append(
@@ -230,7 +249,7 @@ def normalize_bybit_export(path: Path) -> pd.DataFrame:
                     "exit_time": time.strftime("%Y-%m-%d %H:%M:%S"),
                     "exit_price": price,
                     "qty": abs(position),
-                    "fees": float(row["normalized_fee"]),
+                    "fees": entry_fee + float(row["normalized_fee"]),
                     "pnl": float(row[pnl_col]) if pnl_col and not pd.isna(row[pnl_col]) else None,
                 }
             )
@@ -238,6 +257,13 @@ def normalize_bybit_export(path: Path) -> pd.DataFrame:
             position = 0.0
             entry_price = None
             entry_time = None
+            entry_fee = 0.0
+
+        if position != 0:
+            raise ValueError(
+                f"{path.name}: unclosed {symbol} position at the end of the export. "
+                "Provide complete opening and closing pairs."
+            )
 
     result = pd.DataFrame(trades, columns=OUTPUT_COLUMNS)
     return result.dropna(subset=["entry_time", "entry_price", "exit_time", "exit_price", "qty"], how="any")
